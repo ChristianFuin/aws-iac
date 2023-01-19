@@ -1,0 +1,152 @@
+Parameters:
+
+     CIDRBLOCK:
+        Description: Pass the Cidr block of IP Address wished for the VPC
+        Type: String
+        Default: 10.0.0.0/16 
+
+     PublicSubnetCIDR:
+        Description: Pass the Cidr block of IP Address wished for the public subnet
+        Type: String
+        Default: 10.0.1.0/24 
+
+     PrivateSubnetCIDR:
+        Description: Pass the Cidr block of IP Address wished for the public subnet
+        Type: String
+        Default: 10.0.2.0/24 
+
+     ProjectName:
+        Description: Pass the name of the project for tagging
+        Type: String
+
+
+Resources:
+    VPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: !Ref CIDRBLOCK
+            EnableDnsHostnames: true
+            Tags:
+               - Key: Name
+                 Value: !Ref ProjectName
+        
+    InternetGateway:
+        Type: AWS::EC2::InternetGateway
+        Properties:
+            Tags:
+               - Key: Name
+                 Value: !Ref ProjectName
+    
+    InternetGatewayAttachment:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            InternetGatewayId: !Ref InternetGateway
+            VpcId: !Ref VPC
+
+    PublicSubnet:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref VPC
+            AvailabilityZone: !Select [ 0, !GetAZs '' ]
+            CidrBlock: !Ref PublicSubnetCIDR
+            MapPublicIpOnLaunch: true
+            Tags:
+               - Key: Name
+                 Value: !Sub ${ProjectName} Public-Subnet
+
+    PrivateSubnet:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref VPC
+            AvailabilityZone: !Select [ 0, !GetAZs '' ]
+            CidrBlock: !Ref PrivateSubnetCIDR
+            MapPublicIpOnLaunch: false
+            Tags:
+               - Key: Name
+                 Value: !Sub ${ProjectName} Private-Subnet
+
+    NatGatewayEIP:
+        Type: AWS::EC2::EIP
+        DependsOn: InternetGatewayAttachment
+        Properties:
+            Domain: vpc
+            Tags:
+               - Key: Name
+                 Value: !Ref ProjectName
+        
+    NatGateway:
+        Type: AWS::EC2::NatGateway
+        Properties:
+          AllocationId: !GetAtt NatGatewayEIP.AllocationId
+          SubnetId: !Ref PublicSubnet
+          Tags:
+               - Key: Name
+                 Value: !Ref ProjectName
+
+    PublicRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref VPC
+            Tags:
+               - Key: Name
+                 Value: !Sub ${ProjectName} Public Routes
+
+    PrivateRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref VPC
+            Tags:
+               - Key: Name
+                 Value: !Sub ${ProjectName} Private Routes
+
+
+    DefaultPublicRoute:
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties:
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref InternetGateway
+            RouteTableId: !Ref PublicRouteTable
+
+    DefaultPrivateRoute:
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties:
+            DestinationCidrBlock: 0.0.0.0/0
+            NatGatewayId: !Ref NatGateway
+            RouteTableId: !Ref PrivateRouteTable
+
+    PublicRouteSubnetAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PublicRouteTable
+            SubnetId: !Ref PublicSubnet
+
+    PrivateRouteSubnetAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PrivateRouteTable
+            SubnetId: !Ref PrivateSubnet
+    
+Outputs:
+
+    VPC: 
+        Description: A reference to the created VPC
+        Value: !Ref VPC
+        Export:
+          Name: !Sub ${ProjectName}-VPCID
+
+    PublicSubnet: 
+        Description: A reference to the created VPC
+        Value: !Ref PublicSubnet
+        Export:
+          Name: !Sub ${ProjectName}-PublicSubnet
+
+    PrivateSubnet: 
+        Description: A reference to the created VPC
+        Value: !Ref PrivateSubnet
+        Export:
+          Name: !Sub ${ProjectName}-PrivateSubnet
+
+
+
